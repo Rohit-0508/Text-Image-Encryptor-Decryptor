@@ -1,138 +1,162 @@
-from cryptography.fernet import Fernet
-import hashlib
-import base64
 import os
-
-# Generating a 32-byte Base64 based encoded key from the user's given key
-
-def create_key_from_password(password):
-    
-    hashed_password = hashlib.sha256(password.encode()).digest();
-    return base64.urlsafe_b64encode(hashed_password) # converting to Base64 for Fernet
-
-
-# Encrypting a message with a user provided password
-
-def encrypt_message(message, password):
-    key= create_key_from_password(password) 
-    cipher= Fernet(key)
-    encrypted_message= cipher.encrypt(message.encode())
-    return encrypted_message
-
-# Decrypting a message with user provided password
-
-def decrypt_message(encrypted_message, password):
-    key= create_key_from_password(password)
-    cipher= Fernet(key)
-    decrypted_message= cipher.decrypt(encrypted_message).decode()
-    return decrypted_message
+from encryption.image_encryption import (
+    encrypt_image_fernet,
+    decrypt_image_fernet,
+    encrypt_image_des,
+    decrypt_image_des,
+)
+from encryption.text_encryption import (
+    encrypt_message_fernet,
+    decrypt_message_fernet,
+    encrypt_message_des,
+    decrypt_message_des,
+)
 
 def main():
-    encrypted_folder= "encrypted_files"
-    if not os.path.exists(encrypted_folder):
-        os.makedirs(encrypted_folder)
+    encrypted_image_folder = "encrypted_images"
+    decrypted_image_folder = "decrypted_images"
+    encrypted_text_folder = "encrypted_text_files"
+    decrypted_text_folder = "decrypted_text_files"
+
+    # Create folders if they don't exist
+    for folder in [encrypted_image_folder, decrypted_image_folder, encrypted_text_folder, decrypted_text_folder]:
+        if not os.path.exists(folder):
+            os.makedirs(folder)
 
     while True:
-        choice = input("Would you like to encrypt or decrypt a message? (type 'encrypt' or 'decrypt', or 'exit' to quit): ").strip().lower()
+        choice = input("Would you like to work with 'image' or 'text' encryption, or 'exit' to quit: ").strip().lower()
 
-        if choice == 'encrypt':
-            password = input("Enter password for encryption: ")
-            method = input("Would you like to enter a message or encrypt a file? (type 'message' or 'file'): ").strip().lower()
+        if choice == 'image':
+            action = input("Would you like to 'encrypt' or 'decrypt' an image? ").strip().lower()
+            password = input("Enter password: ")
 
-            if method == 'message':
-                message = input("Enter the message to encrypt: ")
-                encrypted_message = encrypt_message(message, password)
-                print("Encrypted message:", encrypted_message.decode())
+            if action == 'encrypt':
+                encryption_type = input("Choose encryption type ('fernet' or 'des'): ").strip().lower()
+                file_path = input("Enter the path of the image file to encrypt: ")
+                if os.path.exists(file_path):
+                    if encryption_type == 'fernet':
+                        encrypted_image = encrypt_image_fernet(file_path, password)
+                    elif encryption_type == 'des':
+                        encrypted_image = encrypt_image_des(file_path, password)
+                    else:
+                        print("Invalid encryption type.")
+                        continue
 
-                save_option = input("Would you like to save the encrypted message to a file? (yes/no): ").strip().lower()
-                if save_option == 'yes':
-                    while True:
+                    save_option = input("Save the encrypted image to a file? (yes/no): ").strip().lower()
+                    if save_option == 'yes':
+                        file_name = input("Enter the name for the encrypted image file (without extension): ").strip()
+                        encrypted_file_path = os.path.join(encrypted_image_folder, f"{file_name}.enc")
+                        with open(encrypted_file_path, 'wb') as file:
+                            file.write(encrypted_image)
+                        print(f"Encrypted image saved to '{encrypted_file_path}'")
+
+            elif action == 'decrypt':
+                file_path = input("Enter the path of the encrypted image file: ")
+                if os.path.exists(file_path):
+                    with open(file_path, 'rb') as file:
+                        encrypted_image = file.read()
+
+                    if encrypted_image.startswith(b"F:"):
+                        decrypted_image = decrypt_image_fernet(encrypted_image[2:], password)
+                    elif encrypted_image.startswith(b"D:"):
+                        decrypted_image = decrypt_image_des(encrypted_image[2:], password)
+                    else:
+                        print("Unknown encryption format.")
+                        continue
+
+                    save_option = input("Save the decrypted image? (yes/no): ").strip().lower()
+                    if save_option == 'yes':
+                        file_name = input("Enter the name for the decrypted image (e.g., output_image.png): ").strip()
+                        decrypted_file_path = os.path.join(decrypted_image_folder, file_name)
+                        with open(decrypted_file_path, 'wb') as file:
+                            file.write(decrypted_image)
+                        print(f"Decrypted image saved to '{decrypted_file_path}'")
+
+        elif choice == 'text':
+            action = input("Would you like to 'encrypt' or 'decrypt' a text message? ").strip().lower()
+            password = input("Enter password: ")
+
+            if action == 'encrypt':
+                encryption_type = input("Choose encryption type ('fernet' or 'des'): ").strip().lower()
+                method = input("Encrypt a 'message' or a 'file'? ").strip().lower()
+
+                if method == 'message':
+                    message = input("Enter the message to encrypt: ")
+                    if encryption_type == 'fernet':
+                        encrypted_message = encrypt_message_fernet(message, password)
+                    elif encryption_type == 'des':
+                        encrypted_message = encrypt_message_des(message, password)
+                    else:
+                        print("Invalid encryption type.")
+                        continue
+
+                    print("Encrypted message:", encrypted_message.decode('utf-8', errors='ignore'))
+                    save_option = input("Save the encrypted message to a file? (yes/no): ").strip().lower()
+                    if save_option == 'yes':
                         file_name = input("Enter the name for the encrypted message file (without extension): ").strip()
-                        file_path = os.path.join(encrypted_folder, f"{file_name}.txt")
+                        file_path = os.path.join(encrypted_text_folder, f"{file_name}.txt")
+                        with open(file_path, 'wb') as file:
+                            file.write(encrypted_message)
+                        print(f"Encrypted message saved to '{file_path}'")
 
-                        # Check if the file already exists
-                        if os.path.exists(file_path):
-                            print(f"The file '{file_path}' already exists. Please choose a different name.")
+                elif method == 'file':
+                    file_path = input("Enter the path of the file to encrypt: ")
+                    if os.path.exists(file_path):
+                        with open(file_path, 'r') as file:
+                            message = file.read()
+                        if encryption_type == 'fernet':
+                            encrypted_message = encrypt_message_fernet(message, password)
+                        elif encryption_type == 'des':
+                            encrypted_message = encrypt_message_des(message, password)
                         else:
+                            print("Invalid encryption type.")
+                            continue
+
+                        save_option = input("Save the encrypted message to a file? (yes/no): ").strip().lower()
+                        if save_option == 'yes':
+                            file_name = input("Enter the name for the encrypted message file (without extension): ").strip()
+                            file_path = os.path.join(encrypted_text_folder, f"{file_name}.txt")
                             with open(file_path, 'wb') as file:
                                 file.write(encrypted_message)
                             print(f"Encrypted message saved to '{file_path}'")
-                            break  # Exit the loop if the file is successfully saved
 
-            elif method == 'file':
-                file_path = input("Enter the path of the file to encrypt: ")
-                if os.path.exists(file_path):
-                    with open(file_path, 'r') as file:
-                        message = file.read()
-                    encrypted_message = encrypt_message(message, password)
-                    print("Encrypted message:", encrypted_message.decode())
+            elif action == 'decrypt':
+                method = input("Decrypt a 'message' or a 'file'? ").strip().lower()
+                if method == 'message':
+                    encrypted_message = input("Enter the encrypted message: ").encode()
 
-                    save_option = input("Would you like to save the encrypted message to a file? (yes/no): ").strip().lower()
-                    if save_option == 'yes':
-                        while True:
-                            file_name = input("Enter the name for the encrypted message file (without extension): ").strip()
-                            encrypted_file_path = os.path.join(encrypted_folder, f"{file_name}.txt")
+                elif method == 'file':
+                    file_path = input("Enter the path of the file with the encrypted message: ")
+                    if os.path.exists(file_path):
+                        with open(file_path, 'rb') as file:
+                            encrypted_message = file.read()
+                    else:
+                        print("File not found.")
+                        continue
 
-                            # Check if the file already exists
-                            if os.path.exists(encrypted_file_path):
-                                print(f"The file '{encrypted_file_path}' already exists. Please choose a different name.")
-                            else:
-                                with open(encrypted_file_path, 'wb') as file:
-                                    file.write(encrypted_message)
-                                print(f"Encrypted message saved to '{encrypted_file_path}'")
-                                break  # Exit the loop if the file is successfully saved
+                if encrypted_message.startswith(b"F:"):
+                    decrypted_message = decrypt_message_fernet(encrypted_message[2:], password)
+                elif encrypted_message.startswith(b"D:"):
+                    decrypted_message = decrypt_message_des(encrypted_message[2:], password)
                 else:
-                    print("File not found. Please check the path.")
+                    print("Unknown encryption format.")
+                    continue
 
-        elif choice == 'decrypt':
-            password = input("Enter password for decryption: ")
-            method = input("Would you like to enter the encrypted message or decrypt a file? (type 'message' or 'file'): ").strip().lower()
-
-            if method == 'message':
-                encrypted_message = input("Enter the encrypted message: ").strip()
-                try:
-                    encrypted_message_bytes = encrypted_message.encode()  # Convert string to bytes
-                    decrypted = decrypt_message(encrypted_message_bytes, password)
-                    print("Decrypted message:", decrypted)
-                except Exception as e:
-                    print("Decryption failed. Incorrect password or corrupted message.")
-
-            elif method == 'file':
-                file_path = input("Enter the path of the file with the encrypted message: ")
-                if os.path.exists(file_path):
-                    with open(file_path, 'rb') as file:
-                        encrypted_message = file.read()
-                    try:
-                        decrypted = decrypt_message(encrypted_message, password)
-                        print("Decrypted message:", decrypted)
-                    except Exception as e:
-                        print("Decryption failed. Incorrect password or corrupted message.")
-                else:
-                    print("File not found. Please check the path.")
+                print("Decrypted message:", decrypted_message)
+                save_option = input("Save the decrypted message to a file? (yes/no): ").strip().lower()
+                if save_option == 'yes':
+                    file_name = input("Enter the name for the decrypted message file (without extension): ").strip()
+                    file_path = os.path.join(decrypted_text_folder, f"{file_name}.txt")
+                    with open(file_path, 'w') as file:
+                        file.write(decrypted_message)
+                    print(f"Decrypted message saved to '{file_path}'")
 
         elif choice == 'exit':
             print("Exiting the program.")
             break
 
         else:
-            print("Invalid choice. Please try again.")
-
+            print("Invalid choice.")
 
 if __name__ == "__main__":
     main()
-
-#Example usage
-# if __name__ == "__main__":
-#     password= input("Enter password for Encryption: ")
-#     message= input("Enter the message to encrypt: ")
-
-#     encrypted= encrypt_message(message, password)
-#     print("Encrypted message: ", encrypted)
-
-
-#     password_for_decryption= input("Enter the password for decryption: ")
-#     try:
-#         decrypted= decrypt_message(encrypted, password_for_decryption)
-#         print("Decrypted message: ", decrypted)
-#     except Exception as e:
-#         print("Decryption failed. Incorrect password or corrupted message.")
